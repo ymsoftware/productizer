@@ -12,6 +12,7 @@ public class NginxRouteToken {
     private String method;
     private NginxRequestHandler handler;
     private Map<String, NginxRouteToken> children;
+    private String arg;
 
     public String getToken() {
         return this.token;
@@ -46,6 +47,18 @@ public class NginxRouteToken {
 
     public NginxRouteToken setChildren(Map<String, NginxRouteToken> children) {
         this.children = children;
+        return this;
+    }
+
+    public String getArg() {
+        return this.arg;
+    }
+
+    public NginxRouteToken setArg(String arg) {
+        if (this.arg != null && this.arg != arg) {
+            throw new IllegalArgumentException(String.format("There is %s parameter already!"));
+        }
+        this.arg = arg;
         return this;
     }
 }

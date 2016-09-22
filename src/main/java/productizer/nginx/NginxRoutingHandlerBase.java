@@ -15,26 +15,48 @@ import static productizer.utils.StringUtils.isEmptyOrNull;
  * Created by ymetelkin on 9/21/16.
  */
 public abstract class NginxRoutingHandlerBase implements NginxJavaRingHandler {
-    Map<String, NginxRouteToken> routes;
+    private final NginxRouteToken root;
+    private final List<String> prefix;
+
+    public static final String REQUEST_ARGS = "request_args";
+
+    public NginxRoutingHandlerBase() {
+        this.root = new NginxRouteToken().setChildren(new HashMap<>());
+        this.prefix = new ArrayList<>();
+    }
+
+    public NginxRoutingHandlerBase(String baseUrl) {
+        this.root = new NginxRouteToken().setChildren(new HashMap<>());
+
+        List<String> prefix = new ArrayList<>();
+
+        List<String> tokens = getRouteTokens(baseUrl, false);
+        if (tokens.size() > 0) {
+            Map<String, NginxRouteToken> routes = this.root.getChildren();
+
+            for (String token : tokens) {
+                prefix.add(token);
+                NginxRouteToken route = new NginxRouteToken().setToken(token).setChildren(new HashMap<>());
+                routes.put(token, route);
+                routes = route.getChildren();
+            }
+        }
+
+        this.prefix = prefix;
+    }
 
     @Override
     public Object[] invoke(Map<String, Object> request) throws IOException {
         String url = (String) request.get(URI);
 
-        if (this.routes == null) {
-            return NginxResponses.invalidUrl(url);
-        }
-
-        List<String> tokens = getRouteTokens(url);
-        NginxRouteToken route = null;
-        Map<String, NginxRouteToken> routes = this.routes;
+        List<String> tokens = getRouteTokens(url, false);
+        NginxRouteToken route = this.root;
 
         for (String token : tokens) {
-            route = routes == null ? null : routes.getOrDefault(token, null);
+            route = getToken(token, route, request);
             if (route == null) {
                 return NginxResponses.invalidUrl(url);
             }
-            routes = route.getChildren();
         }
 
         String method = (String) request.get(REQUEST_METHOD);
@@ -67,21 +89,27 @@ public abstract class NginxRoutingHandlerBase implements NginxJavaRingHandler {
     }
 
     private void addHandler(String url, String method, NginxRequestHandler handler) {
-        if (this.routes == null) {
-            this.routes = new HashMap<>();
-        }
-
-        List<String> tokens = getRouteTokens(url);
+        List<String> tokens = getRouteTokens(url, true);
         int size = tokens.size();
         int count = 0;
-        Map<String, NginxRouteToken> routes = this.routes;
+        NginxRouteToken parent = this.root;
 
         for (String token : tokens) {
             count++;
 
+            Map<String, NginxRouteToken> routes = parent.getChildren();
+            if (routes == null) {
+                parent.setChildren(new HashMap<>());
+                routes = parent.getChildren();
+            }
+
             NginxRouteToken route = routes.getOrDefault(token, null);
             if (route == null) {
                 route = new NginxRouteToken().setToken(token);
+
+                if (token.startsWith("{") && token.endsWith("}")) {
+                    parent.setArg(token.substring(1, token.length() - 1));
+                }
 
                 if (count == size) {
                     route.setMethod(method).setHandler(handler);
@@ -90,14 +118,17 @@ public abstract class NginxRoutingHandlerBase implements NginxJavaRingHandler {
                 }
 
                 routes.put(token, route);
-
-                routes = route.getChildren();
             }
+
+            parent = route;
         }
     }
 
-    private List<String> getRouteTokens(String url) {
+    private List<String> getRouteTokens(String url, boolean usePrefix) {
         List<String> list = new ArrayList<>();
+        if (usePrefix) {
+            list.addAll(this.prefix);
+        }
 
         if (url != null) {
             String[] tokens = url.split("/");
@@ -110,5 +141,30 @@ public abstract class NginxRoutingHandlerBase implements NginxJavaRingHandler {
         }
 
         return list;
+    }
+
+    private NginxRouteToken getToken(String token, NginxRouteToken parent, Map<String, Object> request) {
+        if (parent == null) return null;
+
+        Map<String, NginxRouteToken> routes = parent.getChildren();
+        if (routes == null) return null;
+
+        NginxRouteToken route = routes.getOrDefault(token, null);
+        if (route == null) {
+            String arg = parent.getArg();
+            if (!isEmptyOrNull(arg)) {
+                String key = String.format("{%s}", arg);
+
+                route = routes.getOrDefault(key, null);
+                if (route != null) {
+                    Map<String, Object> args = (Map<String, Object>) request.getOrDefault(REQUEST_ARGS, null);
+                    if (args == null) args = new HashMap<>();
+                    args.put(arg, token);
+                    request.put(REQUEST_ARGS, args);
+                }
+            }
+        }
+
+        return route;
     }
 }
