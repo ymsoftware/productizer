@@ -3,70 +3,112 @@ package productizer.nginx;
 import nginx.clojure.java.NginxJavaRingHandler;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static nginx.clojure.MiniConstants.*;
+import static productizer.utils.StringUtils.isEmptyOrNull;
 
 /**
  * Created by ymetelkin on 9/21/16.
  */
 public abstract class NginxRoutingHandlerBase implements NginxJavaRingHandler {
-    Map<Object, Map<Object, NginxJavaRingHandler>> routes;
+    Map<String, NginxRouteToken> routes;
 
     @Override
     public Object[] invoke(Map<String, Object> request) throws IOException {
-        Object uri = request.get(URI);
+        String url = (String) request.get(URI);
 
         if (this.routes == null) {
-            return NginxUtils.invalidUrlResponse((String) uri);
+            return NginxResponses.invalidUrl(url);
         }
 
-        Map<Object, NginxJavaRingHandler> methods = this.routes.getOrDefault(uri, null);
-        if (methods == null) {
-            return NginxUtils.invalidUrlResponse((String) uri);
+        List<String> tokens = getRouteTokens(url);
+        NginxRouteToken route = null;
+        Map<String, NginxRouteToken> routes = this.routes;
+
+        for (String token : tokens) {
+            route = routes == null ? null : routes.getOrDefault(token, null);
+            if (route == null) {
+                return NginxResponses.invalidUrl(url);
+            }
+            routes = route.getChildren();
         }
 
-        Object method = request.get(REQUEST_METHOD);
-        NginxJavaRingHandler handler = methods.getOrDefault(method, null);
-        if (handler == null) {
-            return NginxUtils.invalidUrlMethodResponse((String) uri, (String) method);
+        String method = (String) request.get(REQUEST_METHOD);
+        if (!method.equals(route.getMethod())) {
+            return NginxResponses.notSupportedMethod(url, method);
         }
 
-        return handler.invoke(request);
+        return route.getHandler().invoke(request);
     }
 
-    void get(String url, NginxJavaRingHandler handler) {
+    public void get(String url, NginxRequestHandler handler) {
         addHandler(url, GET, handler);
-    }
-
-    void post(String url, NginxJavaRingHandler handler) {
         addHandler(url, POST, handler);
     }
 
-    void put(String url, NginxJavaRingHandler handler) {
+    public void post(String url, NginxRequestHandler handler) {
+        addHandler(url, POST, handler);
+    }
+
+    public void put(String url, NginxRequestHandler handler) {
         addHandler(url, PUT, handler);
     }
 
-    void delete(String url, NginxJavaRingHandler handler) {
+    public void delete(String url, NginxRequestHandler handler) {
         addHandler(url, DELETE, handler);
     }
 
-    void head(String url, NginxJavaRingHandler handler) {
+    public void head(String url, NginxRequestHandler handler) {
         addHandler(url, HEAD, handler);
     }
 
-    private void addHandler(String url, String method, NginxJavaRingHandler handler) {
+    private void addHandler(String url, String method, NginxRequestHandler handler) {
         if (this.routes == null) {
             this.routes = new HashMap<>();
         }
 
-        Map<Object, NginxJavaRingHandler> methods = this.routes.getOrDefault(url, null);
-        if (methods == null) {
-            methods = new HashMap<>();
+        List<String> tokens = getRouteTokens(url);
+        int size = tokens.size();
+        int count = 0;
+        Map<String, NginxRouteToken> routes = this.routes;
+
+        for (String token : tokens) {
+            count++;
+
+            NginxRouteToken route = routes.getOrDefault(token, null);
+            if (route == null) {
+                route = new NginxRouteToken().setToken(token);
+
+                if (count == size) {
+                    route.setMethod(method).setHandler(handler);
+                } else {
+                    route.setChildren(new HashMap<>());
+                }
+
+                routes.put(token, route);
+
+                routes = route.getChildren();
+            }
+        }
+    }
+
+    private List<String> getRouteTokens(String url) {
+        List<String> list = new ArrayList<>();
+
+        if (url != null) {
+            String[] tokens = url.split("/");
+            for (int i = 0; i < tokens.length; i++) {
+                String token = tokens[i];
+                if (!isEmptyOrNull(token)) {
+                    list.add(token);
+                }
+            }
         }
 
-        methods.put(method, handler);
-        this.routes.put(url, methods);
+        return list;
     }
 }
