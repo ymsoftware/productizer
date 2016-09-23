@@ -5,9 +5,9 @@ import java.io.IOException;
 import java.io.InputStream;
 
 /**
- * Created by ymetelkin on 9/21/16.
+ * Created by ymetelkin on 9/23/16.
  */
-public class InputStreamUtils {
+public class InputStreams {
     public static ByteArrayOutputStream toByteArrayOutputStream(InputStream stream) throws IOException {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
 

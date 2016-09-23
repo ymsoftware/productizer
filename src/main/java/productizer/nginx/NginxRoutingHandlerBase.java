@@ -1,6 +1,7 @@
 package productizer.nginx;
 
 import nginx.clojure.java.NginxJavaRingHandler;
+import org.elasticsearch.common.Strings;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -9,7 +10,6 @@ import java.util.List;
 import java.util.Map;
 
 import static nginx.clojure.MiniConstants.*;
-import static productizer.utils.StringUtils.isEmptyOrNull;
 
 /**
  * Created by ymetelkin on 9/21/16.
@@ -134,7 +134,7 @@ public abstract class NginxRoutingHandlerBase implements NginxJavaRingHandler {
             String[] tokens = url.split("/");
             for (int i = 0; i < tokens.length; i++) {
                 String token = tokens[i];
-                if (!isEmptyOrNull(token)) {
+                if (!Strings.isNullOrEmpty(token)) {
                     list.add(token);
                 }
             }
@@ -152,7 +152,7 @@ public abstract class NginxRoutingHandlerBase implements NginxJavaRingHandler {
         NginxRouteToken route = routes.getOrDefault(token, null);
         if (route == null) {
             String arg = parent.getArg();
-            if (!isEmptyOrNull(arg)) {
+            if (!Strings.isNullOrEmpty(arg)) {
                 String key = String.format("{%s}", arg);
 
                 route = routes.getOrDefault(key, null);
